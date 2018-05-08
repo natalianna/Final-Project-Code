@@ -1,0 +1,181 @@
+#include <Adafruit_NeoPixel.h>
+
+#define NUMQUICKSUCCESSIVESAMPLES 2 // take quick series of mic samples so not separated in time by long
+#define N_PIXELS  05  // Number of pixels you are using
+#define MIC_PIN   A1  // Microphone is attached to Trinket GPIO #2/Gemma D2 (A1)
+#define LED_PIN    6  // NeoPixel LED strand is connected to GPIO #0 / D0
+#define DC_OFFSET  0  // DC offset in mic signal - if unusure, leave 0
+#define NOISE     50  // Noise/hum/interference in mic signal
+#define SAMPLES   500  // Length of buffer for dynamic level adjustment
+#define TOP       (N_PIXELS +1) // Allow dot to go slightly off scale
+// Comment out the next line if you do not want brightness control or have a Gemma
+
+byte
+peak      = 0,      // Used for falling dot
+dotCount  = 0,      // Frame counter for delaying dot-falling speed
+volCount  = 0;      // Frame counter for storing past volume data
+int showType = 0;
+
+
+#define DISCOMODE 1
+#define RAINBOWMODE 2
+int LIGHTSTATE;
+
+int vol[SAMPLES];       // Collection of prior volume samples
+
+Adafruit_NeoPixel strip;
+
+void setup() {
+  //memset(vol, 0, sizeof(vol));
+  memset(vol, 0, sizeof(int)*SAMPLES); //Thanks Neil!
+  strip = Adafruit_NeoPixel(N_PIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
+  strip.begin();
+  Serial.begin(9600); // UNCOMMENT THIS WHEN ITS GO TIME
+  int i;
+  for(i=0; i< strip.numPixels(); i++) {
+      strip.setPixelColor(i, 0, 255, 0);
+      strip.show();
+      delay(500);      
+    }
+  for(i=0; i< strip.numPixels(); i++) {
+      strip.setPixelColor(i, 0, 0, 0);
+      }
+  strip.show();  
+}
+
+void loop() {
+ for (int i = 0; i < NUMQUICKSUCCESSIVESAMPLES; i++) {
+  checkMic();
+ }
+ setState();
+ setLights();
+} 
+
+
+void checkMic() {
+  int n;
+  n   = analogRead(MIC_PIN);                 // Raw reading from mic
+  int mic_millivolts = map(n, 0, 1023, 0, 5000);
+  int microphonemillivoltage = abs(mic_millivolts - 1250);
+//  Serial.println(microphonemillivoltage);  // UNCOMMENT THIS WHEN ITS GO TIME
+
+  vol[volCount] = microphonemillivoltage;
+  volCount = volCount + 1;
+  if (volCount >= SAMPLES) volCount = 0; // Advance/rollover sample counter
+}
+
+void rainbowCycle(uint8_t wait) {
+  uint16_t i, j;
+
+  for(j=0; j<256*5; j++) { // 5 cycles of all colors on wheel
+    for(i=0; i< strip.numPixels(); i++) {
+//      strip.setPixelColor(i, Wheel(((i * 256 / strip.numPixels()) + j) & 255));
+    }
+    strip.show();
+    delay(wait);
+  }
+}
+
+void setLights () {
+  if (LIGHTSTATE == true) {
+rainbowCycle(20);
+    Serial.println("rainbowmodetime");   
+     }  
+
+     
+       
+   else if (LIGHTSTATE == DISCOMODE) {
+ 
+//  colorWipe(strip.Color(255, 0, 0), 50); // Red
+//  colorWipe(strip.Color(0, 255, 0), 50); // Green
+//  colorWipe(strip.Color(0, 0, 255), 50); // Blue
+    
+  }
+
+  strip.show(); // Update strip
+}
+
+
+int LASTTRANSITION;
+
+void setState() {
+
+  int i, minLvl, maxLvl, volumeRange;
+  // Get volume range of prior frames
+  minLvl = maxLvl = vol[0];
+  float avgLvl = 0;
+  for (i = 1; i < SAMPLES; i++) {
+    if (vol[i] < minLvl)      minLvl = vol[i];
+    else if (vol[i] > maxLvl) maxLvl = vol[i];
+    avgLvl = avgLvl + vol[i];
+  }
+  volumeRange = maxLvl - minLvl;
+  avgLvl = avgLvl / SAMPLES;
+  if (volumeRange <= NOISE) {
+    volumeRange = 0;
+  }
+  
+  // Serial.println(avgLvl);  // UNCOMMENT THIS WHEN ITS GO TIME
+
+ if (maxLvl > 100) {
+   strip.setPixelColor(0, map(maxLvl,0,1000,0,240),0,0);}
+  else
+  {strip.setPixelColor(1, 0,0,0);}
+  
+  if (maxLvl > 250) {
+  strip.setPixelColor(1, map(maxLvl,0,1000,0,240),100,0);}
+  else
+  {strip.setPixelColor(1, 0,0,0);}
+  
+  if (maxLvl > 350) {
+  strip.setPixelColor(2, 0,map(maxLvl,0,1000,0,240),50); 
+  }
+else {
+  strip.setPixelColor(2, 0,0,0);
+}
+if (maxLvl > 500) {
+  strip.setPixelColor(3, 0,0,map(maxLvl,0,1000,0,240)); 
+  }
+else {
+  strip.setPixelColor(3, 0,0,0);
+}
+if (maxLvl > 600) {
+  strip.setPixelColor(4, 50,0,map(maxLvl,0,1000,0,240)); 
+  }
+else {
+  strip.setPixelColor(4, 0,0,0);
+}
+if (maxLvl > 700) {
+  strip.setPixelColor(0, 50,0,map(maxLvl,0,1000,0,240));
+  strip.setPixelColor(1, 0,0,map(maxLvl,0,1000,0,240));
+  strip.setPixelColor(2, 0,map(maxLvl,0,1000,0,240),50); 
+  strip.setPixelColor(3, map(maxLvl,0,1000,0,240),100,0);
+  strip.setPixelColor(4, 0, map(maxLvl,0,1000,0,240),0,0); 
+}
+
+
+  switch (LIGHTSTATE) {
+    case DISCOMODE:
+      // statements
+
+      if ((volumeRange < 100) && (millis() - LASTTRANSITION) > 10000) {
+        LIGHTSTATE = RAINBOWMODE;
+        LASTTRANSITION = millis();
+      }
+      break;
+    case RAINBOWMODE:
+      if (volumeRange > 300) {
+
+
+        LIGHTSTATE = DISCOMODE;
+        LASTTRANSITION = millis();
+
+      }
+
+      // statements
+      break;
+    default:
+      // statements
+      break;
+  }
+}
